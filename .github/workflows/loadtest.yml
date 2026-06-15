@@ -10,7 +10,7 @@ jobs:
     strategy:
       # Cấu hình Matrix: GitHub sẽ tự động nhân bản job này lên 5 máy ảo độc lập
       matrix:
-        runner: [1, 2, 3, 4, 5] 
+        runner: [1] 
 
     steps:
       - name: Lấy mã nguồn từ Repo
