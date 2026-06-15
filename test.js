@@ -40,21 +40,21 @@ const LOP_HOC_PHAN_IDS = new SharedArray("lop_hoc_phan", function () {
 });
 
 // ============================================
-// CẤU HÌNH TEST
+// CẤU HÌNH TEST (Đã tối ưu cho 20 Runners x 750 VUs = 15.000 Users)
 // ============================================
 export const options = {
   stages: [
-    { duration: "30s", target: 10 },
-    { duration: "30s", target: 100 },
-    { duration: "30s", target: 200 },
-    { duration: "50s", target: 375 },
-   ],
+    { duration: "30s", target: 100 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
+    { duration: "1m", target: 400 },  // Tăng tốc ép K8s scale Pod
+    { duration: "2m", target: 750 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
+    { duration: "30s", target: 0 },   // Rút quân
+  ],
 
   thresholds: {
     http_req_duration: ["p(50)<500", "p(90)<1000", "p(95)<2000", "p(99)<5000"],
     http_req_failed: ["rate<0.05"],
-    cache_hit_rate: ["rate>0.3"],
-    cache_response_time: ["p(95)<200"],
+    cache_hit_rate: ["rate>0.5"], // Kỳ vọng Cloudflare gánh > 50% tải
+    cache_response_time: ["p(95)<200"], // Cache từ Edge phải cực nhanh
     db_response_time: ["p(95)<3000"],
   },
 };
@@ -248,37 +248,58 @@ export default function () {
 }
 
 // ============================================
-// EXECUTE REQUEST
+// EXECUTE REQUEST (Đã nâng cấp GET/POST và Cloudflare Check)
 // ============================================
 function executeRequest(endpoint, params, cacheable) {
-const url = `${BASE_URL}${endpoint}`;
-  const payload = JSON.stringify(params);
+  let url = `${BASE_URL}${endpoint}`;
+  let response;
 
   const tags = {
     endpoint: endpoint.split("/").pop(),
     cacheable: String(cacheable),
   };
 
-  const response = http.post(url, payload, {
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "User-Agent": "Secret-LoadTest-VanhStack-9999" // <--- THÊM DÒNG NÀY VÀO ĐÂY!
-    }, 
-    timeout: "5s",
-    tags: tags,
-  });
+  const headers = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "Secret-LoadTest-VanhStack-9999" // Thẻ bài xuyên WAF
+  };
+
+  // PHÂN LOẠI PHƯƠNG THỨC HTTP
+  if (cacheable) {
+    // Nếu là API tra cứu (Cacheable) -> Chuyển params thành query string và dùng GET
+    const queryParams = Object.keys(params)
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+      .join("&");
+    
+    if (queryParams.length > 0) {
+      url = `${url}?${queryParams}`;
+    }
+
+    response = http.get(url, {
+      headers: headers,
+      timeout: "15s", // Tăng timeout cho luồng tải lớn
+      tags: tags,
+    });
+  } else {
+    // Nếu là API Đăng ký/Hủy (Mutation) -> Giữ nguyên POST và gửi Body JSON
+    const payload = JSON.stringify(params);
+    response = http.post(url, payload, {
+      headers: headers,
+      timeout: "15s",
+      tags: tags,
+    });
+  }
 
   const duration = response.timings.duration;
 
-  // Check response - k6 tự động ghi vào metric "checks"
+  // Check response
   const result = check(response, {
     "HTTP 200": (r) => r.status === 200,
     "Business success": (r) => {
       try {
         return JSON.parse(r.body).success === true;
       } catch (e) {
-        console.log(e);
         return false;
       }
     },
@@ -287,10 +308,19 @@ const url = `${BASE_URL}${endpoint}`;
   // Ghi custom metrics
   if (result) {
     let isCacheHit = false;
-    try {
-      isCacheHit = JSON.parse(response.body).fromCache === true;
-    } catch (e) {
-      // ignore
+
+    // KIỂM TRA MỨC ĐỘ CACHE
+    // 1. Kiểm tra xem Cloudflare Edge có gánh đạn không?
+    const cfCacheStatus = response.headers["Cf-Cache-Status"];
+    if (cfCacheStatus === "HIT") {
+      isCacheHit = true;
+    } else {
+      // 2. Nếu lọt qua Cloudflare, kiểm tra xem Redis nội bộ có đỡ được không?
+      try {
+        isCacheHit = JSON.parse(response.body).fromCache === true;
+      } catch (e) {
+        // ignore
+      }
     }
 
     if (isCacheHit) {
@@ -304,7 +334,3 @@ const url = `${BASE_URL}${endpoint}`;
     }
   }
 }
-
-// ============================================
-// KHÔNG CẦN handleSummary - k6 tự in báo cáo mặc định
-// ============================================
