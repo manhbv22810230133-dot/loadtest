@@ -292,6 +292,9 @@ function executeRequest(endpoint, params, cacheable) {
   }
 
   const duration = response.timings.duration;
+  if (response.status !== 200) {
+    console.log(`Lỗi gòi: Status ${response.status} - Body: ${response.body.substring(0, 100)}`);
+  }
 
   // Check response
   const result = check(response, {
