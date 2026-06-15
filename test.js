@@ -248,7 +248,7 @@ export default function () {
 // EXECUTE REQUEST
 // ============================================
 function executeRequest(endpoint, params, cacheable) {
-  const url = `${BASE_URL}${endpoint}`;
+const url = `${BASE_URL}${endpoint}`;
   const payload = JSON.stringify(params);
 
   const tags = {
@@ -259,8 +259,9 @@ function executeRequest(endpoint, params, cacheable) {
   const response = http.post(url, payload, {
     headers: {
       "Content-Type": "application/json",
-      Accept: "application/json",
-    },
+      "Accept": "application/json",
+      "User-Agent": "Secret-LoadTest-VanhStack-9999" // <--- THÊM DÒNG NÀY VÀO ĐÂY!
+    }, 
     timeout: "15s",
     tags: tags,
   });
