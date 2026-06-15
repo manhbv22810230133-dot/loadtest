@@ -44,8 +44,9 @@ const LOP_HOC_PHAN_IDS = new SharedArray("lop_hoc_phan", function () {
 // ============================================
 export const options = {
   stages: [
-    { duration: "20s", target: 10 },
-    { duration: "20s", target: 200 },
+    { duration: "30s", target: 10 },
+    { duration: "30s", target: 100 },
+    { duration: "30s", target: 200 },
     { duration: "50s", target: 375 },
    ],
 
