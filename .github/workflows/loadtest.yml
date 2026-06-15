@@ -1,0 +1,22 @@
+name: K8s Load Test Matrix
+
+# Kích hoạt thủ công bằng nút bấm trên GitHub
+on:
+  workflow_dispatch:
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    strategy:
+      # Cấu hình Matrix: GitHub sẽ tự động nhân bản job này lên 5 máy ảo độc lập
+      matrix:
+        runner: [1, 2, 3, 4, 5] 
+
+    steps:
+      - name: Lấy mã nguồn từ Repo
+        uses: actions/checkout@v3
+
+      - name: Chạy k6 để Load Test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: test.js
