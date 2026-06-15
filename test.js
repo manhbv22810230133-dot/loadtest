@@ -251,23 +251,43 @@ export default function () {
 // EXECUTE REQUEST
 // ============================================
 function executeRequest(endpoint, params, cacheable) {
-const url = `${BASE_URL}${endpoint}`;
-  const payload = JSON.stringify(params);
+let url = `${BASE_URL}${endpoint}`;
+  let response;
 
   const tags = {
     endpoint: endpoint.split("/").pop(),
     cacheable: String(cacheable),
   };
 
-  const response = http.post(url, payload, {
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "User-Agent": "Secret-LoadTest-VanhStack-9999" // <--- THÊM DÒNG NÀY VÀO ĐÂY!
-    }, 
-    timeout: "5s",
-    tags: tags,
-  });
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "User-Agent": "Secret-LoadTest-VanhStack-9999", // Thẻ bài xuyên WAF
+  };
+
+  if (cacheable) {
+    // Nếu là API tra cứu (có cache) -> Dùng phương thức GET
+    // Chuyển object params thành chuỗi query parameters trên URL
+    const queryParams = Object.keys(params)
+      .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+      .join('&');
+    
+    url = `${url}?${queryParams}`;
+    
+    response = http.get(url, {
+      headers: headers,
+      timeout: "15s",
+      tags: tags,
+    });
+  } else {
+    // Nếu là API đăng ký/hủy (không cache) -> Dùng phương thức POST
+    const payload = JSON.stringify(params);
+    response = http.post(url, payload, {
+      headers: headers,
+      timeout: "15s",
+      tags: tags,
+    });
+  }
 
   const duration = response.timings.duration;
 
