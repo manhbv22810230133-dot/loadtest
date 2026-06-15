@@ -17,7 +17,7 @@ const dbResponseTime = new Trend("db_response_time");
 // ============================================
 const MON_HOC_IDS = new SharedArray("mon_hoc", function () {
   const ids = [];
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 15; i++) {
     ids.push(`IT${String(i).padStart(3, "0")}`);
   }
   return ids;
@@ -25,7 +25,7 @@ const MON_HOC_IDS = new SharedArray("mon_hoc", function () {
 
 const SINH_VIEN_IDS = new SharedArray("sinh_vien", function () {
   const ids = [];
-  for (let i = 1; i <= 10; i++) {
+  for (let i = 1; i <= 1000; i++) {
     ids.push(`SV${String(i).padStart(5, "0")}`);
   }
   return ids;
@@ -33,7 +33,7 @@ const SINH_VIEN_IDS = new SharedArray("sinh_vien", function () {
 
 const LOP_HOC_PHAN_IDS = new SharedArray("lop_hoc_phan", function () {
   const ids = [];
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 50; i++) {
     ids.push(`LHP${String(i).padStart(3, "0")}`);
   }
   return ids;
@@ -67,7 +67,7 @@ const BASE_URL = "https://api.vanhstack.dev";
 // ============================================
 const SCENARIOS = {
   GET_CHI_TIET_LOP_HOC_PHAN: {
-    weight: 25,
+    weight: 30,
     endpoint: "/DangKyHocPhan/GetChiTietLopHocPhan",
     cacheable: true,
     buildParams: () => ({
@@ -77,7 +77,7 @@ const SCENARIOS = {
   },
 
   GET_DANH_SACH_MON_HOC_PHAN_DANG_KY: {
-    weight: 20,
+    weight: 30,
     endpoint: "/DangKyHocPhan/GetDanhSachMonHocPhanDangKy",
     cacheable: true,
     buildParams: () => ({
@@ -88,7 +88,7 @@ const SCENARIOS = {
   },
 
   GET_DANH_SACH_LOP_HOC_PHAN: {
-    weight: 15,
+    weight: 30,
     endpoint: "/DangKyHocPhan/GetDanhSachLopHocPhan",
     cacheable: true,
     buildParams: () => ({
@@ -97,7 +97,7 @@ const SCENARIOS = {
   },
 
   DANG_KY_MON_HOC: {
-    weight: 30,
+    weight: 5,
     endpoint: "/DangKyHocPhan/DangKyMonHoc",
     cacheable: false,
     buildParams: () => {
@@ -116,7 +116,7 @@ const SCENARIOS = {
   },
 
   HUY_DANG_KY: {
-    weight: 10,
+    weight: 5,
     endpoint: "/DangKyHocPhan/HuyDangKy",
     cacheable: false,
     buildParams: () => {
@@ -279,7 +279,7 @@ function executeRequest(endpoint, params, cacheable) {
 
     response = http.get(url, {
       headers: headers,
-      timeout: "15s", // Tăng timeout cho luồng tải lớn
+      timeout: "5s", // Tăng timeout cho luồng tải lớn
       tags: tags,
     });
   } else {
@@ -287,7 +287,7 @@ function executeRequest(endpoint, params, cacheable) {
     const payload = JSON.stringify(params);
     response = http.post(url, payload, {
       headers: headers,
-      timeout: "15s",
+      timeout: "5s",
       tags: tags,
     });
   }
