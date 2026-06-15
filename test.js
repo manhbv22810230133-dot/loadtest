@@ -262,7 +262,7 @@ const url = `${BASE_URL}${endpoint}`;
       "Accept": "application/json",
       "User-Agent": "Secret-LoadTest-VanhStack-9999" // <--- THÊM DÒNG NÀY VÀO ĐÂY!
     }, 
-    timeout: "1s",
+    timeout: "2s",
     tags: tags,
   });
 
