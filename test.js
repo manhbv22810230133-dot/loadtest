@@ -25,7 +25,7 @@ const MON_HOC_IDS = new SharedArray("mon_hoc", function () {
 
 const SINH_VIEN_IDS = new SharedArray("sinh_vien", function () {
   const ids = [];
-  for (let i = 1; i <= 1000; i++) {
+  for (let i = 1; i <= 5000; i++) {
     ids.push(`SV${String(i).padStart(5, "0")}`);
   }
   return ids;
