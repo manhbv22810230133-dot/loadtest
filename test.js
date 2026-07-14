@@ -50,9 +50,9 @@ export const options = {
   //   { duration: "30s", target: 0 },   // Rút quân
   // ],
     stages: [
-    { duration: "5s", target: 1 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
-    { duration: "10s", target: 4 },  // Tăng tốc ép K8s scale Pod
-    { duration: "20s", target: 7 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
+    { duration: "5s", target: 10 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
+    { duration: "10s", target: 40 },  // Tăng tốc ép K8s scale Pod
+    { duration: "20s", target: 70 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
     { duration: "30s", target: 0 },   // Rút quân
   ],
 
