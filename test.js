@@ -96,7 +96,7 @@ const SCENARIOS = {
   },
 
   GET_DANH_SACH_LOP_HOC_PHAN: {
-    weight: 30,
+    weight: 35,
     endpoint: "/DangKyHocPhan/GetDanhSachLopHocPhan",
     cacheable: true,
     buildParams: () => ({
@@ -124,7 +124,7 @@ const SCENARIOS = {
   },
 
   HUY_DANG_KY: {
-    weight: 5,
+    weight: 0,
     endpoint: "/DangKyHocPhan/HuyDangKy",
     cacheable: false,
     buildParams: () => {
@@ -287,7 +287,7 @@ function executeRequest(endpoint, params, cacheable) {
 
     response = http.get(url, {
       headers: headers,
-      timeout: "5s", // Tăng timeout cho luồng tải lớn
+      timeout: "10s", // Tăng timeout cho luồng tải lớn
       tags: tags,
     });
   } else {
