@@ -3,7 +3,7 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { Rate, Trend } from "k6/metrics";
 import { SharedArray } from "k6/data";
-
+import { textSummary } from "https://jslib.k6.io/k6-summary/0.0.2/index.js"; 
 // ============================================
 // CUSTOM METRICS (sẽ tự động hiển thị trong báo cáo mặc định)
 // ============================================
@@ -337,4 +337,10 @@ function executeRequest(endpoint, params, cacheable) {
       dbResponseTime.add(duration, tags);
     }
   }
+} 
+export function handleSummary(data) {
+  return {
+    stdout: textSummary(data, { indent: " ", enableColors: true }),
+    "summary.json": JSON.stringify(data),
+  };
 }
