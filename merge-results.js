@@ -1,131 +1,176 @@
 // merge-results.js
-// Gộp kết quả summary.json từ 20 runner k6, tính trung bình, xuất CSV.
+// Gộp raw-results.json của 20 runner theo từng GIÂY (dấu thời gian thực),
+// tính trung bình các chỉ số của 20 máy tại đúng giây đó -> 1 dòng CSV / 1 giây.
 
 const fs = require("fs");
 const path = require("path");
+const readline = require("readline");
 
 const baseDir = "all-results";
-const EXPECTED_RUNNERS = 20; // tổng số runner trong matrix, dùng để báo cáo thiếu
+const EXPECTED_RUNNERS = 20;
 
 if (!fs.existsSync(baseDir)) {
-  console.error(`Không tìm thấy thư mục ${baseDir}. Không có artifact nào được tải về.`);
+  console.error(`Không tìm thấy thư mục ${baseDir}.`);
   process.exit(1);
 }
 
 const runnerDirs = fs
   .readdirSync(baseDir)
-  .filter((d) => d.startsWith("k6-results-runner-"))
-  .sort((a, b) => {
-    const numA = Number(a.replace("k6-results-runner-", ""));
-    const numB = Number(b.replace("k6-results-runner-", ""));
-    return numA - numB;
-  });
+  .filter((d) => d.startsWith("k6-results-runner-"));
 
-const rows = [];
-const missingRunners = [];
-const foundRunnerIds = [];
+// Bucket theo giây: key = "2026-07-14T10:00:00" (đã cắt phần mili giây)
+// Mỗi bucket gộp dữ liệu từ TẤT CẢ runner rơi vào đúng giây đó
+const buckets = new Map();
 
-for (const dir of runnerDirs) {
-  const runnerId = dir.replace("k6-results-runner-", "");
-  const filePath = path.join(baseDir, dir, "summary.json");
+// Track vus riêng theo runner, vì metric "vus" là Gauge, báo cáo định kỳ
+// (không phải mỗi request), cần lấy giá trị gần nhất của mỗi runner tại
+// mỗi giây rồi CỘNG DỒN giữa các runner (vì 20 runner chạy song song
+// = tổng số user thật đang tải tại giây đó).
+const vusPerRunnerSecond = new Map(); // second -> Map(runnerId -> vus)
 
-  if (!fs.existsSync(filePath)) {
-    console.log(`⚠️  Runner ${runnerId}: thiếu summary.json`);
-    missingRunners.push(runnerId);
-    continue;
+function getBucket(second) {
+  if (!buckets.has(second)) {
+    buckets.set(second, {
+      durationSum: 0,
+      durationCount: 0,
+      cacheHitSum: 0,
+      cacheHitCount: 0,
+      dbDurationSum: 0,
+      dbDurationCount: 0,
+      failedSum: 0,
+      failedCount: 0,
+    });
+  }
+  return buckets.get(second);
+}
+
+function floorToSecond(isoTime) {
+  // "2026-07-14T10:00:00.4231Z" -> "2026-07-14T10:00:00"
+  return isoTime.slice(0, 19);
+}
+
+let missingRunners = [];
+let foundRunners = 0;
+
+async function processFile(runnerId, filePath) {
+  const stream = fs.createReadStream(filePath);
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    let obj;
+    try {
+      obj = JSON.parse(line);
+    } catch (e) {
+      continue; // bỏ qua dòng lỗi
+    }
+    if (obj.type !== "Point" || !obj.data || !obj.data.time) continue;
+
+    const second = floorToSecond(obj.data.time);
+    const value = obj.data.value;
+    const metric = obj.metric;
+
+    if (metric === "http_req_duration") {
+      const b = getBucket(second);
+      b.durationSum += value;
+      b.durationCount += 1;
+    } else if (metric === "http_req_failed") {
+      const b = getBucket(second);
+      b.failedSum += value;
+      b.failedCount += 1;
+    } else if (metric === "cache_hit_rate") {
+      const b = getBucket(second);
+      b.cacheHitSum += value;
+      b.cacheHitCount += 1;
+    } else if (metric === "db_response_time") {
+      const b = getBucket(second);
+      b.dbDurationSum += value;
+      b.dbDurationCount += 1;
+    } else if (metric === "vus") {
+      if (!vusPerRunnerSecond.has(second)) {
+        vusPerRunnerSecond.set(second, new Map());
+      }
+      vusPerRunnerSecond.get(second).set(runnerId, value);
+    }
+  }
+}
+
+async function main() {
+  for (const dir of runnerDirs) {
+    const runnerId = dir.replace("k6-results-runner-", "");
+    const filePath = path.join(baseDir, dir, "raw-results.json");
+
+    if (!fs.existsSync(filePath)) {
+      console.log(`⚠️  Runner ${runnerId}: thiếu raw-results.json`);
+      missingRunners.push(runnerId);
+      continue;
+    }
+
+    await processFile(runnerId, filePath);
+    foundRunners++;
+    console.log(`✅ Đã xử lý runner ${runnerId}`);
   }
 
-  let data;
-  try {
-    data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-  } catch (e) {
-    console.log(`⚠️  Runner ${runnerId}: summary.json bị lỗi JSON (${e.message})`);
-    missingRunners.push(runnerId);
-    continue;
+  for (let i = 1; i <= EXPECTED_RUNNERS; i++) {
+    if (!runnerDirs.some((d) => d === `k6-results-runner-${i}`)) {
+      missingRunners.push(String(i));
+    }
   }
 
-  const m = data.metrics || {};
-
-  rows.push({
-    runner: runnerId,
-    vus_max: m.vus_max?.values?.max ?? "",
-    requests: m.http_reqs?.values?.count ?? "",
-    req_failed_rate: m.http_req_failed?.values?.rate ?? "",
-    duration_avg: m.http_req_duration?.values?.avg ?? "",
-    duration_p50: m.http_req_duration?.values?.["p(50)"] ?? "",
-    duration_p90: m.http_req_duration?.values?.["p(90)"] ?? "",
-    duration_p95: m.http_req_duration?.values?.["p(95)"] ?? "",
-    duration_p99: m.http_req_duration?.values?.["p(99)"] ?? "",
-    cache_hit_rate: m.cache_hit_rate?.values?.rate ?? "",
-    cache_response_avg: m.cache_response_time?.values?.avg ?? "",
-    db_response_avg: m.db_response_time?.values?.avg ?? "",
-    db_response_p95: m.db_response_time?.values?.["p(95)"] ?? "",
-  });
-
-  foundRunnerIds.push(runnerId);
-}
-
-// Kiểm tra runner nào bị thiếu artifact hoàn toàn (không có cả folder)
-const foundDirIds = runnerDirs.map((d) => d.replace("k6-results-runner-", ""));
-for (let i = 1; i <= EXPECTED_RUNNERS; i++) {
-  const id = String(i);
-  if (!foundDirIds.includes(id)) {
-    console.log(`⚠️  Runner ${id}: không có artifact nào được upload (job có thể đã fail trước bước upload)`);
-    missingRunners.push(id);
+  if (buckets.size === 0) {
+    console.error("Không có data point nào được ghi nhận. Dừng xử lý.");
+    process.exit(1);
   }
+
+  // Sắp xếp các giây theo thứ tự thời gian
+  const sortedSeconds = Array.from(buckets.keys()).sort();
+
+  const rows = [];
+  for (const second of sortedSeconds) {
+    const b = buckets.get(second);
+
+    // Tổng vus của TẤT CẢ runner đang chạy tại giây này
+    let totalVus = 0;
+    if (vusPerRunnerSecond.has(second)) {
+      for (const v of vusPerRunnerSecond.get(second).values()) {
+        totalVus += v;
+      }
+    }
+
+    rows.push({
+      timestamp: second,
+      total_vus_all_runners: totalVus,
+      request_count: b.durationCount,
+      avg_duration_ms: b.durationCount > 0 ? (b.durationSum / b.durationCount).toFixed(2) : "",
+      req_failed_rate: b.failedCount > 0 ? (b.failedSum / b.failedCount).toFixed(4) : "",
+      cache_hit_rate: b.cacheHitCount > 0 ? (b.cacheHitSum / b.cacheHitCount).toFixed(4) : "",
+      db_response_avg_ms: b.dbDurationCount > 0 ? (b.dbDurationSum / b.dbDurationCount).toFixed(2) : "",
+    });
+  }
+
+  const headers = [
+    "timestamp",
+    "total_vus_all_runners",
+    "request_count",
+    "avg_duration_ms",
+    "req_failed_rate",
+    "cache_hit_rate",
+    "db_response_avg_ms",
+  ];
+
+  const csvLines = [headers.join(",")];
+  for (const row of rows) {
+    csvLines.push(headers.map((h) => row[h] ?? "").join(","));
+  }
+
+  fs.writeFileSync("timeline-results.csv", csvLines.join("\n"));
+
+  console.log("======================================");
+  console.log(`Runner có dữ liệu: ${foundRunners}/${EXPECTED_RUNNERS}`);
+  console.log(`Runner bị thiếu: ${missingRunners.length > 0 ? missingRunners.join(", ") : "Không có"}`);
+  console.log(`Tổng số giây (dòng) trong timeline: ${rows.length}`);
+  console.log("======================================");
+  console.log("Đã ghi file timeline-results.csv");
 }
 
-if (rows.length === 0) {
-  console.error("Không có runner nào có dữ liệu hợp lệ. Dừng xử lý.");
-  process.exit(1);
-}
-
-// Các cột số cần tính trung bình
-const numericCols = [
-  "vus_max",
-  "requests",
-  "req_failed_rate",
-  "duration_avg",
-  "duration_p50",
-  "duration_p90",
-  "duration_p95",
-  "duration_p99",
-  "cache_hit_rate",
-  "cache_response_avg",
-  "db_response_avg",
-  "db_response_p95",
-];
-
-// Tính trung bình cộng — chỉ trên các runner có dữ liệu hợp lệ
-const avgRow = { runner: `AVERAGE (n=${rows.length}/${EXPECTED_RUNNERS})` };
-for (const col of numericCols) {
-  const values = rows.map((r) => Number(r[col])).filter((v) => !isNaN(v));
-  const avg =
-    values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : "";
-  avgRow[col] = avg === "" ? "" : avg.toFixed(2);
-}
-
-// Tổng số request thực tế (không phải trung bình, mà là tổng tải toàn hệ thống)
-const totalRow = { runner: "TOTAL" };
-totalRow.requests = rows.reduce((sum, r) => sum + (Number(r.requests) || 0), 0);
-
-// Ghép dữ liệu: 20 dòng runner + dòng trung bình + dòng tổng
-const finalRows = [...rows, avgRow, totalRow];
-
-// Xuất CSV
-const headers = ["runner", ...numericCols];
-const csvLines = [headers.join(",")];
-for (const row of finalRows) {
-  const line = headers.map((h) => row[h] ?? "").join(",");
-  csvLines.push(line);
-}
-
-fs.writeFileSync("merged-results.csv", csvLines.join("\n"));
-
-console.log("======================================");
-console.log(`Tổng runner mong đợi: ${EXPECTED_RUNNERS}`);
-console.log(`Runner có dữ liệu hợp lệ: ${rows.length}`);
-console.log(`Runner bị thiếu: ${missingRunners.length > 0 ? missingRunners.join(", ") : "Không có"}`);
-console.log("Trung bình cộng (avg):", avgRow);
-console.log("======================================");
-console.log("Đã ghi file merged-results.csv");
+main();
