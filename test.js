@@ -44,10 +44,10 @@ const LOP_HOC_PHAN_IDS = new SharedArray("lop_hoc_phan", function () {
 // ============================================
 export const options = {
   stages: [
-    { duration: "30s", target: 100 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
-    { duration: "1m", target: 400 },  // Tăng tốc ép K8s scale Pod
-    { duration: "2m", target: 750 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
-    { duration: "30s", target: 0 },   // Rút quân
+    { duration: "1m", target: 100 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
+    { duration: "30s", target: 400 },  // Tăng tốc ép K8s scale Pod
+    { duration: "1m", target: 750 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
+    { duration: "2ms", target: 0 },   // Rút quân
   ],
   //   stages: [
   //   { duration: "5s", target: 10 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
