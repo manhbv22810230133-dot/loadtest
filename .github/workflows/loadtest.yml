@@ -1,16 +1,18 @@
 name: K8s Load Test Matrix
 
-# Kích hoạt thủ công bằng nút bấm trên GitHub
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write   # cần để job merge-results push file CSV vào repo
 
 jobs:
   load-test:
     runs-on: ubuntu-latest
     strategy:
-      # Cấu hình Matrix: GitHub sẽ tự động nhân bản job này lên 5 máy ảo độc lập
       matrix:
-        runner: [1,2,3,4,5,6,7,8,9,10, 11,12,13,14,15,16,17,18,19,20] 
+        runner: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+      fail-fast: false   # 1 runner lỗi không hủy 19 runner còn lại
 
     steps:
       - name: Lấy mã nguồn từ Repo
@@ -20,3 +22,47 @@ jobs:
         uses: grafana/k6-action@v0.3.1
         with:
           filename: test.js
+        env:
+          K6_LOG_OUTPUT: none   # tắt hẳn log engine (info/warn/debug) của k6
+
+      - name: Upload kết quả runner ${{ matrix.runner }}
+        if: always()   # upload cả khi test fail/threshold không đạt
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-runner-${{ matrix.runner }}
+          path: summary.json
+          retention-days: 7
+          if-no-files-found: warn   # không làm fail step nếu k6 crash trước khi ghi file
+
+  merge-results:
+    needs: load-test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lấy mã nguồn từ Repo
+        uses: actions/checkout@v3
+
+      - name: Tải toàn bộ kết quả 20 runner
+        uses: actions/download-artifact@v4
+        with:
+          pattern: k6-results-runner-*
+          path: all-results
+          merge-multiple: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Gộp JSON -> CSV + tính trung bình
+        run: node merge-results.js
+
+      - name: Push file kết quả vào repo
+        run: |
+          mkdir -p reports
+          mv merged-results.csv reports/results-$(date +%Y%m%d-%H%M%S).csv
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports/*.csv
+          git commit -m "chore: add load test results $(date +%Y%m%d-%H%M%S)" || echo "Không có gì thay đổi để commit"
+          git push
