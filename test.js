@@ -17,7 +17,7 @@ const dbResponseTime = new Trend("db_response_time");
 // ============================================
 const MON_HOC_IDS = new SharedArray("mon_hoc", function () {
   const ids = [];
-  for (let i = 1; i <= 15; i++) {
+  for (let i = 1; i <= 120; i++) {
     ids.push(`IT${String(i).padStart(3, "0")}`);
   }
   return ids;
@@ -33,7 +33,7 @@ const SINH_VIEN_IDS = new SharedArray("sinh_vien", function () {
 
 const LOP_HOC_PHAN_IDS = new SharedArray("lop_hoc_phan", function () {
   const ids = [];
-  for (let i = 1; i <= 50; i++) {
+  for (let i = 1; i <= 500; i++) {
     ids.push(`LHP${String(i).padStart(3, "0")}`);
   }
   return ids;
