@@ -43,12 +43,20 @@ const LOP_HOC_PHAN_IDS = new SharedArray("lop_hoc_phan", function () {
 // CẤU HÌNH TEST (Đã tối ưu cho 20 Runners x 750 VUs = 15.000 Users)
 // ============================================
 export const options = {
-  stages: [
-    { duration: "30s", target: 100 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
-    { duration: "1m", target: 400 },  // Tăng tốc ép K8s scale Pod
-    { duration: "2m", target: 750 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
+  // stages: [
+  //   { duration: "30s", target: 100 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
+  //   { duration: "1m", target: 400 },  // Tăng tốc ép K8s scale Pod
+  //   { duration: "2m", target: 750 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
+  //   { duration: "30s", target: 0 },   // Rút quân
+  // ],
+    stages: [
+    { duration: "30s", target: 1 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
+    { duration: "1m", target: 4 },  // Tăng tốc ép K8s scale Pod
+    { duration: "2m", target: 7 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
     { duration: "30s", target: 0 },   // Rút quân
   ],
+
+  
   // stages: [ { duration: "30s", target: 50 } ], // Bắn 50 users thôi
 
   thresholds: {
