@@ -1,6 +1,6 @@
 // merge-results.js
-// Gộp raw-results.json của 20 runner theo từng GIÂY (dấu thời gian thực),
-// tính trung bình các chỉ số của 20 máy tại đúng giây đó -> 1 dòng CSV / 1 giây.
+// Gộp raw-results.json của 20 runner theo từng GIÂY,
+// tính trung bình + percentile (p90, p95) của 20 máy tại đúng giây đó -> 1 dòng CSV / 1 giây.
 
 const fs = require("fs");
 const path = require("path");
@@ -18,35 +18,42 @@ const runnerDirs = fs
   .readdirSync(baseDir)
   .filter((d) => d.startsWith("k6-results-runner-"));
 
-// Bucket theo giây: key = "2026-07-14T10:00:00" (đã cắt phần mili giây)
-// Mỗi bucket gộp dữ liệu từ TẤT CẢ runner rơi vào đúng giây đó
+// Mỗi bucket = 1 giây, giữ MẢNG giá trị thô để tính percentile chính xác
+// (không thể suy percentile từ tổng/trung bình).
 const buckets = new Map();
 
-// Track vus riêng theo runner, vì metric "vus" là Gauge, báo cáo định kỳ
-// (không phải mỗi request), cần lấy giá trị gần nhất của mỗi runner tại
-// mỗi giây rồi CỘNG DỒN giữa các runner (vì 20 runner chạy song song
-// = tổng số user thật đang tải tại giây đó).
 const vusPerRunnerSecond = new Map(); // second -> Map(runnerId -> vus)
 
 function getBucket(second) {
   if (!buckets.has(second)) {
     buckets.set(second, {
-      durationSum: 0,
-      durationCount: 0,
-      cacheHitSum: 0,
-      cacheHitCount: 0,
-      dbDurationSum: 0,
-      dbDurationCount: 0,
-      failedSum: 0,
-      failedCount: 0,
+      durations: [],       // http_req_duration - dùng tính avg, p90, p95
+      cacheHitValues: [],  // cache_hit_rate
+      dbDurations: [],     // db_response_time - dùng tính avg, p95
+      failedValues: [],    // http_req_failed
     });
   }
   return buckets.get(second);
 }
 
 function floorToSecond(isoTime) {
-  // "2026-07-14T10:00:00.4231Z" -> "2026-07-14T10:00:00"
-  return isoTime.slice(0, 19);
+  return isoTime.slice(0, 19); // "2026-07-14T10:00:00.4231Z" -> "2026-07-14T10:00:00"
+}
+
+// Tính percentile theo cách chuẩn (nearest-rank interpolation)
+function percentile(sortedArr, p) {
+  if (sortedArr.length === 0) return "";
+  const idx = (p / 100) * (sortedArr.length - 1);
+  const lower = Math.floor(idx);
+  const upper = Math.ceil(idx);
+  if (lower === upper) return sortedArr[lower];
+  const weight = idx - lower;
+  return sortedArr[lower] * (1 - weight) + sortedArr[upper] * weight;
+}
+
+function average(arr) {
+  if (arr.length === 0) return "";
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
 
 let missingRunners = [];
@@ -62,7 +69,7 @@ async function processFile(runnerId, filePath) {
     try {
       obj = JSON.parse(line);
     } catch (e) {
-      continue; // bỏ qua dòng lỗi
+      continue;
     }
     if (obj.type !== "Point" || !obj.data || !obj.data.time) continue;
 
@@ -71,21 +78,13 @@ async function processFile(runnerId, filePath) {
     const metric = obj.metric;
 
     if (metric === "http_req_duration") {
-      const b = getBucket(second);
-      b.durationSum += value;
-      b.durationCount += 1;
+      getBucket(second).durations.push(value);
     } else if (metric === "http_req_failed") {
-      const b = getBucket(second);
-      b.failedSum += value;
-      b.failedCount += 1;
+      getBucket(second).failedValues.push(value);
     } else if (metric === "cache_hit_rate") {
-      const b = getBucket(second);
-      b.cacheHitSum += value;
-      b.cacheHitCount += 1;
+      getBucket(second).cacheHitValues.push(value);
     } else if (metric === "db_response_time") {
-      const b = getBucket(second);
-      b.dbDurationSum += value;
-      b.dbDurationCount += 1;
+      getBucket(second).dbDurations.push(value);
     } else if (metric === "vus") {
       if (!vusPerRunnerSecond.has(second)) {
         vusPerRunnerSecond.set(second, new Map());
@@ -122,7 +121,6 @@ async function main() {
     process.exit(1);
   }
 
-  // Sắp xếp các giây theo thứ tự thời gian
   const sortedSeconds = Array.from(buckets.keys()).sort();
 
   const rows = [];
@@ -137,14 +135,21 @@ async function main() {
       }
     }
 
+    // Sắp xếp mảng duration để tính percentile
+    const sortedDurations = [...b.durations].sort((a, c) => a - c);
+    const sortedDbDurations = [...b.dbDurations].sort((a, c) => a - c);
+
     rows.push({
       timestamp: second,
       total_vus_all_runners: totalVus,
-      request_count: b.durationCount,
-      avg_duration_ms: b.durationCount > 0 ? (b.durationSum / b.durationCount).toFixed(2) : "",
-      req_failed_rate: b.failedCount > 0 ? (b.failedSum / b.failedCount).toFixed(4) : "",
-      cache_hit_rate: b.cacheHitCount > 0 ? (b.cacheHitSum / b.cacheHitCount).toFixed(4) : "",
-      db_response_avg_ms: b.dbDurationCount > 0 ? (b.dbDurationSum / b.dbDurationCount).toFixed(2) : "",
+      request_count: b.durations.length,
+      avg_duration_ms: fmt(average(sortedDurations)),
+      p90_duration_ms: fmt(percentile(sortedDurations, 90)),
+      p95_duration_ms: fmt(percentile(sortedDurations, 95)),
+      req_failed_rate: fmt(average(b.failedValues), 4),
+      cache_hit_rate: fmt(average(b.cacheHitValues), 4),
+      db_response_avg_ms: fmt(average(sortedDbDurations)),
+      db_response_p95_ms: fmt(percentile(sortedDbDurations, 95)),
     });
   }
 
@@ -153,9 +158,12 @@ async function main() {
     "total_vus_all_runners",
     "request_count",
     "avg_duration_ms",
+    "p90_duration_ms",
+    "p95_duration_ms",
     "req_failed_rate",
     "cache_hit_rate",
     "db_response_avg_ms",
+    "db_response_p95_ms",
   ];
 
   const csvLines = [headers.join(",")];
@@ -171,6 +179,11 @@ async function main() {
   console.log(`Tổng số giây (dòng) trong timeline: ${rows.length}`);
   console.log("======================================");
   console.log("Đã ghi file timeline-results.csv");
+}
+
+function fmt(value, decimals = 2) {
+  if (value === "" || value === undefined || isNaN(value)) return "";
+  return Number(value).toFixed(decimals);
 }
 
 main();
