@@ -78,7 +78,7 @@ export const options = {
   },
 };
 
-const BASE_URL = "https://api.vanhstack.dev";
+const BASE_URL = "https://vanhstack.dev";
 
 // ============================================
 // TEST SCENARIOS
