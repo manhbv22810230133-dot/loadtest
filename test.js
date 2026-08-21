@@ -39,6 +39,14 @@ const LOP_HOC_PHAN_IDS = new SharedArray("lop_hoc_phan", function () {
   return ids;
 });
 
+const MA_DANG_KY_IDS = new SharedArray("ma_dang_ky", function () {
+  const ids = [];
+  for (let i = 1; i <= 2000; i++) {
+    ids.push(`DK${String(i).padStart(5, "0")}`);
+  }
+  return ids;
+});
+
 // ============================================
 // CẤU HÌNH TEST (Đã tối ưu cho 20 Runners x 750 VUs = 15.000 Users)
 // ============================================
@@ -77,7 +85,7 @@ const BASE_URL = "https://api.vanhstack.dev";
 // ============================================
 const SCENARIOS = {
   GET_CHI_TIET_LOP_HOC_PHAN: {
-    weight: 30,
+    weight: 25,
     endpoint: "/DangKyHocPhan/GetChiTietLopHocPhan",
     cacheable: true,
     buildParams: () => ({
@@ -87,7 +95,7 @@ const SCENARIOS = {
   },
 
   GET_DANH_SACH_MON_HOC_PHAN_DANG_KY: {
-    weight: 30,
+    weight: 25,
     endpoint: "/DangKyHocPhan/GetDanhSachMonHocPhanDangKy",
     cacheable: true,
     buildParams: () => ({
@@ -98,11 +106,37 @@ const SCENARIOS = {
   },
 
   GET_DANH_SACH_LOP_HOC_PHAN: {
-    weight: 35,
+    weight: 25,
     endpoint: "/DangKyHocPhan/GetDanhSachLopHocPhan",
     cacheable: true,
     buildParams: () => ({
       TenMonHoc: MON_HOC_IDS[Math.floor(Math.random() * MON_HOC_IDS.length)],
+    }),
+  },
+
+  BATCH_GET_COUNTERS: {
+    weight: 10,
+    endpoint: "/DangKyHocPhan/BatchGetCounters",
+    cacheable: true,
+    buildParams: () => {
+      const count = Math.floor(Math.random() * 5) + 1;
+      const maLopHocPhans = [];
+      for (let i = 0; i < count; i++) {
+        maLopHocPhans.push(
+          LOP_HOC_PHAN_IDS[Math.floor(Math.random() * LOP_HOC_PHAN_IDS.length)]
+        );
+      }
+      return { maLopHocPhans };
+    },
+  },
+
+  TRANG_THAI_DANG_KY: {
+    weight: 10,
+    endpoint: "/DangKyHocPhan/TrangThaiDangKy",
+    cacheable: true,
+    buildParams: () => ({
+      maDangKy:
+        MA_DANG_KY_IDS[Math.floor(Math.random() * MA_DANG_KY_IDS.length)],
     }),
   },
 
@@ -178,6 +212,8 @@ function selectScenario(vu) {
       SCENARIOS.GET_CHI_TIET_LOP_HOC_PHAN,
       SCENARIOS.GET_DANH_SACH_MON_HOC_PHAN_DANG_KY,
       SCENARIOS.GET_DANH_SACH_LOP_HOC_PHAN,
+      SCENARIOS.BATCH_GET_COUNTERS,
+      SCENARIOS.TRANG_THAI_DANG_KY,
     ];
     return warmupScenarios[vu.requestCount % warmupScenarios.length];
   }
@@ -279,9 +315,17 @@ function executeRequest(endpoint, params, cacheable) {
   // PHÂN LOẠI PHƯƠNG THỨC HTTP
   if (cacheable) {
     // Nếu là API tra cứu (Cacheable) -> Chuyển params thành query string và dùng GET
-    const queryParams = Object.keys(params)
-      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
-      .join("&");
+    const queryParts = [];
+    for (const [k, v] of Object.entries(params)) {
+      if (Array.isArray(v)) {
+        v.forEach((item) => {
+          queryParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(item)}`);
+        });
+      } else {
+        queryParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+      }
+    }
+    const queryParams = queryParts.join("&");
     
     if (queryParams.length > 0) {
       url = `${url}?${queryParams}`;
