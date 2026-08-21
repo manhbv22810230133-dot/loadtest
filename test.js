@@ -51,20 +51,20 @@ const MA_DANG_KY_IDS = new SharedArray("ma_dang_ky", function () {
 // CẤU HÌNH TEST (Đã tối ưu cho 20 Runners x 750 VUs = 15.000 Users)
 // ============================================
 export const options = {
-  stages: [
-    { duration: "30s", target: 10 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
-     { duration: "1m", target: 750 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
-    { duration: "1m", target: 500 },   // Rút quân
-    { duration: "2m", target: 200 },   // Rút quân
-    { duration: "3m", target: 100 },   // Rút quân
-    { duration: "10m", target: 0 },   // Rút quân
-  ],
-  //   stages: [
-  //   { duration: "5s", target: 10 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
-  //   { duration: "10s", target: 40 },  // Tăng tốc ép K8s scale Pod
-  //   { duration: "20s", target: 70 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
-  //   { duration: "30s", target: 0 },   // Rút quân
+  // stages: [
+  //   { duration: "30s", target: 10 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
+  //    { duration: "1m", target: 750 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
+  //   { duration: "1m", target: 500 },   // Rút quân
+  //   { duration: "2m", target: 200 },   // Rút quân
+  //   { duration: "3m", target: 100 },   // Rút quân
+  //   { duration: "10m", target: 0 },   // Rút quân
   // ],
+    stages: [
+    { duration: "5s", target: 10 }, // Khởi động nhẹ để K8s và Cloudflare nhận diện
+    { duration: "5s", target: 40 },  // Tăng tốc ép K8s scale Pod
+    { duration: "5s", target: 70 },  // Đỉnh điểm ngâm tải (Mỗi máy ảo gánh 750 Users)
+    { duration: "s", target: 0 },   // Rút quân
+  ],
 
   
   // stages: [ { duration: "30s", target: 50 } ], // Bắn 50 users thôi
